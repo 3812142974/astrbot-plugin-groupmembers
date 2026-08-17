@@ -113,16 +113,16 @@ class GroupMembersCard(Star):
 
     # ---------------- 指令 ----------------
 
-    @filter.command("群成员")
+    @filter.command("群成员头像")
     async def cmd_group_members(self, event: AstrMessageEvent):
         """把整个群（或随机 N 人 / 指定@的人）的头像、昵称、QQ 整合成一条合并转发发出"""
         yield event.plain_result("正在生成群成员合并转发，请稍候…")
         result = await self._build(event, require_mention=False)
         yield result
 
-    @filter.command("群成员at")
+    @filter.command("群成员头像at")
     async def cmd_group_members_at(self, event: AstrMessageEvent):
-        """@ 谁就只收录谁：/群成员at @A @B（可加数字表示随机几个人）"""
+        """@ 谁就只收录谁：/群成员头像at @A @B（可加数字表示随机几个人）"""
         yield event.plain_result("正在生成指定成员合并转发，请稍候…")
         result = await self._build(event, require_mention=True)
         yield result
