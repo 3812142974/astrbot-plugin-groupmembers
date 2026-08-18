@@ -1,5 +1,5 @@
 name: astrbot_plugin_groupmembers # 插件唯一识别名
-display_name: 群成员合并转发 # 展示用名称
+display_name: 群成员头像合并转发 # 展示用名称
 desc: 将群成员（全部 / 指定@ / 随机N人）的头像、昵称、QQ 号整合成一条合并转发消息发出。
 version: v1.0.0 # 插件版本号
 author: "3812142974" # 作者
