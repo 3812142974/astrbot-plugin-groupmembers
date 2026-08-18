@@ -4,3 +4,5 @@ desc: 将群成员（全部 / 指定@ / 随机N人）的头像、昵称、QQ 号
 version: v1.0.0 # 插件版本号
 author: "3812142974" # 作者
 repo: https://github.com/3812142974/astrbot-plugin-groupmembers # 插件仓库地址
+support_platforms:
+  - aiocqhttp
