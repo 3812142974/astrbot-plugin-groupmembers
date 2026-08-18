@@ -15,6 +15,8 @@ from astrbot.api import logger
 AVATAR_SPEC = 640
 # 同时下载头像的最大并发数（避免一次性打爆网络）。
 AVATAR_CONCURRENCY = 8
+# 单条合并转发允许的最大节点数（OneBot 限制，超过会发送失败）。
+MAX_NODES_PER_FORWARD = 100
 
 
 @register(
@@ -67,29 +69,45 @@ class GroupMembersCard(Star):
             content.append(Plain(f"QQ：{qq}\n昵称：{name}"))
             return Node(content=content, uin=qq, name=name)
 
+    @staticmethod
+    def _valid_member(m, self_id: str) -> bool:
+        """过滤掉机器人自身（get_group_member_list 也会返回 bot，且 user_id 常为 0）
+        以及无效 id（0 / all / 空）。"""
+        uid = str(m.user_id)
+        if not uid or uid in ("0", "all"):
+            return False
+        if self_id and uid == str(self_id):
+            return False
+        return True
+
     async def _build(self, event: AstrMessageEvent, require_mention: bool):
         if not event.get_group_id():
-            return event.plain_result("请在群聊中使用该指令～")
+            yield event.plain_result("请在群聊中使用该指令～")
+            return
 
         group = await event.get_group()
         if not group or not group.members:
-            return event.plain_result(
+            yield event.plain_result(
                 "获取群成员列表失败，请确认机器人具备获取群成员信息的权限。"
             )
+            return
 
-        all_members = group.members
+        self_id = event.get_self_id()
+        all_members = [m for m in group.members if self._valid_member(m, self_id)]
         by_id = {str(m.user_id): m for m in all_members}
 
         mentioned, number = self._parse_args(event)
 
         if require_mention:
             if not mentioned:
-                return event.plain_result(
-                    "请 @ 需要收录的成员，例如：/群成员at @小明 @小红"
+                yield event.plain_result(
+                    "请 @ 需要收录的成员，例如：/群成员头像at @小明 @小红"
                 )
+                return
             candidates = [by_id[q] for q in mentioned if q in by_id]
             if not candidates:
-                return event.plain_result("在群成员列表中未找到被 @ 的成员。")
+                yield event.plain_result("在群成员列表中未找到被 @ 的成员。")
+                return
         else:
             # 主指令：默认全部；若带了 @ 则只收录被 @ 的人。
             candidates = (
@@ -109,20 +127,38 @@ class GroupMembersCard(Star):
                 for m in candidates
             )
         )
-        return event.chain_result([Nodes(nodes=nodes)])
+
+        total = len(nodes)
+        if total == 0:
+            yield event.plain_result("没有可收录的成员。")
+            return
+
+        # 合并转发单条节点上限为 100，超过则拆成多条发送。
+        chunks = [
+            nodes[i : i + MAX_NODES_PER_FORWARD]
+            for i in range(0, total, MAX_NODES_PER_FORWARD)
+        ]
+        if len(chunks) > 1:
+            yield event.plain_result(
+                f"共 {total} 人，超过单条转发上限，分 {len(chunks)} 条合并转发发送～"
+            )
+        for idx, chunk in enumerate(chunks, 1):
+            if len(chunks) > 1:
+                yield event.plain_result(f"第 {idx}/{len(chunks)} 条")
+            yield event.chain_result([Nodes(nodes=chunk)])
 
     # ---------------- 指令 ----------------
 
     @filter.command("群成员头像")
     async def cmd_group_members(self, event: AstrMessageEvent):
-        """把整个群（或随机 N 人 / 指定@的人）的头像、昵称、QQ 整合成一条合并转发发出"""
+        """把整个群（或随机 N 人 / 指定@的人）的头像、昵称、QQ 整合成合并转发发出"""
         yield event.plain_result("正在生成群成员合并转发，请稍候…")
-        result = await self._build(event, require_mention=False)
-        yield result
+        async for result in self._build(event, require_mention=False):
+            yield result
 
     @filter.command("群成员头像at")
     async def cmd_group_members_at(self, event: AstrMessageEvent):
         """@ 谁就只收录谁：/群成员头像at @A @B（可加数字表示随机几个人）"""
         yield event.plain_result("正在生成指定成员合并转发，请稍候…")
-        result = await self._build(event, require_mention=True)
-        yield result
+        async for result in self._build(event, require_mention=True):
+            yield result
